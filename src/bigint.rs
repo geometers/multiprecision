@@ -206,6 +206,25 @@ pub mod tests {
     }
 
     #[test]
+    pub fn test_add_wide_2() {
+        let num_limbs = 20;
+        let log_limb_size = 13;
+        let a = BigUint::parse_bytes(b"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap();
+        let b = BigUint::parse_bytes(b"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap();
+        let a_limbs = from_biguint_le(&a, num_limbs, log_limb_size);
+        let b_limbs = from_biguint_le(&a, num_limbs, log_limb_size);
+        let c_limbs = add_wide(&a_limbs, &b_limbs, log_limb_size);
+        let c = to_biguint_le(&c_limbs, num_limbs + 1, log_limb_size);
+        let expected = &a + &b;
+        let expected_limbs = from_biguint_le(&expected, num_limbs + 1, log_limb_size);
+
+        println!("{:?}", c_limbs);
+        println!("{:?}", expected_limbs);
+        assert!(eq(&c_limbs, &expected_limbs));
+        assert!(c == expected);
+    }
+
+    #[test]
     pub fn test_add_unsafe() {
         let a = vec![5u32, 1u32];
         let b = vec![5u32, 1u32];

@@ -97,9 +97,9 @@ pub fn calc_rinv_and_n0(
 /// An optimised variant of the Montgomery product algorithm from
 /// https://github.com/mitschabaude/montgomery#13-x-30-bit-multiplication.
 pub fn mont_mul_optimised(
-    x: Vec<u32>,
-    y: Vec<u32>,
-    p: Vec<u32>,
+    x: &Vec<u32>,
+    y: &Vec<u32>,
+    p: &Vec<u32>,
     n0: u32,
     num_limbs: usize,
     log_limb_size: u32
@@ -139,9 +139,9 @@ pub fn mont_mul_optimised(
 /// An modified variant of the Montgomery product algorithm from
 /// https://github.com/mitschabaude/montgomery#13-x-30-bit-multiplication.
 pub fn mont_mul_modified(
-    x: Vec<u32>,
-    y: Vec<u32>,
-    p: Vec<u32>,
+    x: &Vec<u32>,
+    y: &Vec<u32>,
+    p: &Vec<u32>,
     n0: u32,
     num_limbs: usize,
     log_limb_size: u32,
@@ -294,7 +294,7 @@ pub mod tests {
 
         let a_r_limbs = bigint::from_biguint_le(&a_r, num_limbs, log_limb_size);
         let b_r_limbs = bigint::from_biguint_le(&b_r, num_limbs, log_limb_size);
-        let res = mont_mul_optimised(a_r_limbs, b_r_limbs, p_limbs, n0, num_limbs, log_limb_size);
+        let res = mont_mul_optimised(&a_r_limbs, &b_r_limbs, &p_limbs, n0, num_limbs, log_limb_size);
 
         assert!(bigint::eq(&res, &expected_limbs));
     }
@@ -327,7 +327,7 @@ pub mod tests {
 
         let a_r_limbs = bigint::from_biguint_le(&a_r, num_limbs, log_limb_size);
         let b_r_limbs = bigint::from_biguint_le(&b_r, num_limbs, log_limb_size);
-        let res = mont_mul_modified(a_r_limbs, b_r_limbs, p_limbs, n0, num_limbs, log_limb_size, nsafe);
+        let res = mont_mul_modified(&a_r_limbs, &b_r_limbs, &p_limbs, n0, num_limbs, log_limb_size, nsafe);
 
         assert!(bigint::eq(&res, &expected_limbs));
     }
