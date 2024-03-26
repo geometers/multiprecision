@@ -1,7 +1,7 @@
 # `multiprecision`
 
 TODO:
-- rewrite reamde
+- rewrite readme
 - implement CIOS for 16-bit limbs
 
 All operations are in little-endian form (where the digit in memory at the smallest
