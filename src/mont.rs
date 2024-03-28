@@ -2,6 +2,18 @@ use num_bigint::{ BigInt, BigUint, Sign };
 use std::num::Wrapping;
 use crate::bigint;
 
+pub fn calc_nsafe(log_limb_size: u32) -> usize {
+    let max_int_width = 32;
+    let rhs = 2u64.pow(max_int_width);
+    let mut k = 1usize;
+    let x = 2u64.pow(2u32 * log_limb_size);
+    while (k as u64) * x <= rhs {
+        k += 1;
+    }
+
+    k / 2
+}
+
 pub fn calc_num_limbs(log_limb_size: u32, p_bitwidth: usize) -> usize {
     let l = log_limb_size as usize;
     let mut num_limbs = p_bitwidth / l;
@@ -235,6 +247,7 @@ pub mod tests {
         calc_bitwidth,
         calc_mont_radix,
         calc_rinv_and_n0,
+        calc_nsafe,
         mont_mul_optimised,
         mont_mul_modified
     };
@@ -306,15 +319,7 @@ pub mod tests {
         num_limbs: usize,
         log_limb_size: u32
     ) {
-        let max_int_width = 32;
-        let rhs = 2u64.pow(max_int_width);
-        let mut k = 1usize;
-        while (k as u64) * 2u64.pow(2u32 * log_limb_size) <= rhs {
-            k += 1;
-        }
-
-        let nsafe = k / 2;
-
+        let nsafe = calc_nsafe(log_limb_size);
         let r = calc_mont_radix(num_limbs, log_limb_size);
         let res = calc_rinv_and_n0(&p, &r, log_limb_size);
         let n0 = res.1;
