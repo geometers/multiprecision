@@ -406,7 +406,6 @@ pub mod tests {
         let p_bitwidth = calc_bitwidth(&p);
         for log_limb_size in 15..16 {
             let num_limbs = calc_num_limbs(log_limb_size, p_bitwidth);
-            println!("p_bitwidth: {}", p_bitwidth);
 
             let a = BigUint::parse_bytes(b"10ab655e9a2ca55660b44d1e5c37b00159aa76fed00000010a11800000000001", 16).unwrap();
             let b = BigUint::parse_bytes(b"11ab655e9a2ca55660b44d1e5c37b00159aa76fed00000010a11800000000001", 16).unwrap();

@@ -218,8 +218,6 @@ pub mod tests {
         let expected = &a + &b;
         let expected_limbs = from_biguint_le(&expected, num_limbs + 1, log_limb_size);
 
-        println!("{:?}", c_limbs);
-        println!("{:?}", expected_limbs);
         assert!(eq(&c_limbs, &expected_limbs));
         assert!(c == expected);
     }
