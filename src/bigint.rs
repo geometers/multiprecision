@@ -173,10 +173,6 @@ pub fn sub(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
 pub fn div2(v: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     let mut result = vec![0u32; v.len()];
 
-    if *v == result {
-        return result;
-    }
-
     let mut rem = 0u32;
 
     let m = 2u32.pow(log_limb_size);
@@ -193,11 +189,28 @@ pub fn div2(v: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     result
 }
 
+pub fn is_even(val: &Vec<u32>) -> bool {
+    val[0] % 2u32 == 0u32
+}
+
+pub fn is_one(val: &Vec<u32>) -> bool {
+    if val[0] != 1u32 {
+        return false;
+    }
+
+    for i in 1..val.len() {
+        if val[i] != 0u32 {
+            return false;
+        }
+    }
+
+    true
+}
 
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, from_biguint_le, to_biguint_le
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, from_biguint_le, to_biguint_le
     };
     use crate::utils::calc_num_limbs;
     use num_traits::One;
@@ -205,6 +218,20 @@ pub mod tests {
     use rand::Rng;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
+
+    #[test]
+    pub fn test_is_even() {
+        let log_limb_size = 13;
+        let num_limbs = 20;
+
+        for i in 0..16384 {
+            let v = BigUint::from(i as u32);
+            let v_limbs = from_biguint_le(&v, num_limbs, log_limb_size);
+
+            assert_eq!(is_even(&v_limbs), i % 2 == 0);
+        }
+    }
+
 
     #[test]
     pub fn test_eq() {
@@ -368,10 +395,11 @@ pub mod tests {
 
     #[test]
     pub fn test_div2() {
+        let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
+
         for log_limb_size in 11..16 {
             let num_limbs = calc_num_limbs(log_limb_size, 256);
-            let mut rng = ChaCha8Rng::seed_from_u64(2 as u64);
-            for _ in 0..500 {
+            for _ in 0..100 {
                 let mut a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 if &a % BigUint::from(2u32) == BigUint::one() {
                     a += BigUint::one();

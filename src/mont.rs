@@ -30,11 +30,15 @@ fn egcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     (g, y - (b / a) * x.clone(), x.clone())
 }
 
-pub fn calc_rinv_and_n0(
+pub fn calc_inv_and_pprime(
     p: &BigUint,
     r: &BigUint,
-    log_limb_size: u32
-) -> (BigUint, u32) {
+) -> (BigUint, BigUint) {
+    assert!(*r != BigUint::from(0u32));
+
+    let p_bigint = BigInt::from_biguint(Sign::Plus, p.clone());
+    let r_bigint = BigInt::from_biguint(Sign::Plus, r.clone());
+    let one = BigInt::from(1u32);
     let (_, mut rinv, mut pprime) = egcd(
         &BigInt::from_biguint(Sign::Plus, r.clone()),
         &BigInt::from_biguint(Sign::Plus, p.clone())
@@ -48,37 +52,39 @@ pub fn calc_rinv_and_n0(
         pprime = BigInt::from_biguint(Sign::Plus, r.clone()) + pprime;
     }
 
-    let p_bigint = BigInt::from_biguint(Sign::Plus, p.clone());
-    let r_bigint = BigInt::from_biguint(Sign::Plus, r.clone());
-    let one = BigInt::from(1u32);
-
     // r * rinv - p * pprime == 1
     assert!(
-        (
-            BigInt::from_biguint(Sign::Plus, r.clone()) * &rinv % &p_bigint
-        ) -
-        (&p_bigint * &pprime % &p_bigint)
+        (BigInt::from_biguint(Sign::Plus, r.clone()) * &rinv % &p_bigint) -
+            (&p_bigint * &pprime % &p_bigint)
         == one
     );
 
     // r * rinv % p == 1
-    assert!(
-        (
-            BigInt::from_biguint(Sign::Plus, r.clone()) * &rinv % &p_bigint
-        )
-        == one
-    );
+    assert!((BigInt::from_biguint(Sign::Plus, r.clone()) * &rinv % &p_bigint) == one);
 
     // p * pprime % r == 1
     assert!(
         (&p_bigint * &pprime % &r_bigint) == one
     );
 
+    (
+        rinv.to_biguint().unwrap(),
+        pprime.to_biguint().unwrap(),
+    )
+}
+
+pub fn calc_rinv_and_n0(
+    p: &BigUint,
+    r: &BigUint,
+    log_limb_size: u32
+) -> (BigUint, u32) {
+    let (rinv, pprime) = calc_inv_and_pprime(p, r);
+    let pprime = BigInt::from_biguint(Sign::Plus, pprime);
+
     let neg_n_inv = BigInt::from_biguint(Sign::Plus, r.clone()) - pprime;
     let n0 = neg_n_inv % BigInt::from(2u32.pow(log_limb_size as u32));
     let n0 = n0.to_biguint().unwrap().to_u32_digits()[0];
 
-    let rinv = rinv.to_biguint().unwrap();
     (rinv, n0)
 }
 
