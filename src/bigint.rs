@@ -169,12 +169,42 @@ pub fn sub(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     sub_with_borrow(lhs, rhs, log_limb_size).0
 }
 
+/// Returns v / 2
+pub fn div2(v: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    let mut result = vec![0u32; v.len()];
+
+    if *v == result {
+        return result;
+    }
+
+    let mut rem = 0u32;
+
+    let m = 2u32.pow(log_limb_size);
+
+    for idx in 0..v.len() {
+        let i = v.len() - idx - 1;
+
+        let d = v[i] + rem * m;
+        let q = d / 2u32;
+        rem = d % 2u32;
+        result[i] = q;
+    }
+
+    result
+}
+
+
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, gt, gte, from_biguint_le, to_biguint_le
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, from_biguint_le, to_biguint_le
     };
-    use num_bigint::BigUint;
+    use crate::utils::calc_num_limbs;
+    use num_traits::One;
+    use num_bigint::{ BigUint, RandomBits };
+    use rand::Rng;
+    use rand_chacha::ChaCha8Rng;
+    use rand_chacha::rand_core::SeedableRng;
 
     #[test]
     pub fn test_eq() {
@@ -333,6 +363,25 @@ pub mod tests {
             let limbs = from_biguint_le(&p, num_limbs, log_limb_size);
             let expected = to_biguint_le(&limbs, num_limbs, log_limb_size);
             assert!(p == expected);
+        }
+    }
+
+    #[test]
+    pub fn test_div2() {
+        for log_limb_size in 11..16 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+            let mut rng = ChaCha8Rng::seed_from_u64(2 as u64);
+            for _ in 0..500 {
+                let mut a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                if &a % BigUint::from(2u32) == BigUint::one() {
+                    a += BigUint::one();
+                }
+                let a_limbs = from_biguint_le(&a, num_limbs, log_limb_size);
+                let result_limbs = div2(&a_limbs, log_limb_size);
+                let result = to_biguint_le(&result_limbs, num_limbs, log_limb_size);
+
+                assert_eq!(result, a / BigUint::from(2u32));
+            }
         }
     }
 }

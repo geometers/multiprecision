@@ -9,7 +9,7 @@ edition = "2021"
 num = "0.4.1"
 num-traits = "0.2.18"
 hex = "0.4.3"
-num-bigint = "0.4.4"
+num-bigint = { version = "0.4.4", features = ["rand"] }
 num-integer = "0.1.46"
 
 [dev-dependencies]

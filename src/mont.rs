@@ -214,8 +214,9 @@ fn conditional_reduce(x: &Vec<u32>, y: &Vec<u32>, log_limb_size: u32) -> Vec<u32
 
 #[cfg(test)]
 pub mod tests {
+    use rand::Rng;
     use rand_chacha::ChaCha8Rng;
-    use rand_chacha::rand_core::{ RngCore, SeedableRng };
+    use rand_chacha::rand_core::SeedableRng;
 
     use crate::bigint;
     use crate::utils::{
@@ -229,7 +230,7 @@ pub mod tests {
         mont_mul_optimised,
         mont_mul_modified
     };
-    use num_bigint::BigUint;
+    use num_bigint::{ BigUint, RandomBits };
 
     #[test]
     pub fn test_calc_num_limbs() {
@@ -338,12 +339,8 @@ pub mod tests {
             let num_limbs = calc_num_limbs(log_limb_size, p_bitwidth);
             for i in 0..100 {
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
-                let mut a_bytes = [0u8; 32];
-                let mut b_bytes = [0u8; 32];
-                rng.fill_bytes(&mut a_bytes);
-                rng.fill_bytes(&mut b_bytes);
-                let a = BigUint::from_bytes_le(&a_bytes);
-                let b = BigUint::from_bytes_le(&b_bytes);
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let b: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 mont_mul_optimised_test(&a, &b, &p, num_limbs, log_limb_size);
             }
         }
@@ -372,12 +369,8 @@ pub mod tests {
             let num_limbs = calc_num_limbs(log_limb_size, p_bitwidth);
             for i in 0..100 {
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
-                let mut a_bytes = [0u8; 32];
-                let mut b_bytes = [0u8; 32];
-                rng.fill_bytes(&mut a_bytes);
-                rng.fill_bytes(&mut b_bytes);
-                let a = BigUint::from_bytes_le(&a_bytes);
-                let b = BigUint::from_bytes_le(&b_bytes);
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let b: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 mont_mul_optimised_test(&a, &b, &p, num_limbs, log_limb_size);
             }
         }
@@ -420,12 +413,9 @@ pub mod tests {
             let num_limbs = calc_num_limbs(log_limb_size, p_bitwidth);
             for i in 0..100 {
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
-                let mut a_bytes = [0u8; 32];
-                let mut b_bytes = [0u8; 32];
-                rng.fill_bytes(&mut a_bytes);
-                rng.fill_bytes(&mut b_bytes);
-                let a = BigUint::from_bytes_le(&a_bytes);
-                let b = BigUint::from_bytes_le(&b_bytes);
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let b: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                mont_mul_modified_test(&a, &b, &p, num_limbs, log_limb_size);
                 mont_mul_modified_test(&a, &b, &p, num_limbs, log_limb_size);
             }
         }
@@ -440,15 +430,10 @@ pub mod tests {
             let num_limbs = calc_num_limbs(log_limb_size, p_bitwidth);
             for i in 0..100 {
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
-                let mut a_bytes = [0u8; 32];
-                let mut b_bytes = [0u8; 32];
-                rng.fill_bytes(&mut a_bytes);
-                rng.fill_bytes(&mut b_bytes);
-                let a = BigUint::from_bytes_le(&a_bytes);
-                let b = BigUint::from_bytes_le(&b_bytes);
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let b: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 mont_mul_modified_test(&a, &b, &p, num_limbs, log_limb_size);
             }
         }
     }
-
 }

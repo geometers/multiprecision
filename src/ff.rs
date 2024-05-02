@@ -45,39 +45,95 @@ pub fn sub(
     bigint::sub(p, &r, log_limb_size)
 }
 
-/*
-/// Calculates the Montgomery product of lhs and rhs. lhs and rhs must already be in Montgomery
-/// form. For instance:
-///
-/// lhs = a * r
-/// rhs = b * r
-/// mont_mul(lhs, rhs) = a * b * r
-/// 
-/// Only limb sizes between ___ and ___ are supported.
-pub fn mont_mul(
-    lhs: Vec<u32>,
-    rhs: Vec<u32>
-    log_limb_size: u32
-) {
-    assert!(log_limb_size < 16);
-    match log_limb_size {
-        13 => mont_mul_optimised(lhs, rhs, log_limb_size),
-        _ => panic!("unsupported limb size")
-    }
+pub fn is_even(val: &Vec<u32>) -> bool {
+    val[0] % 2u32 == 0u32
 }
 
-pub fn mont_mul_optimised(
-    lhs: Vec<u32>,
-    rhs: Vec<u32>
+pub fn is_one(val: &Vec<u32>) -> bool {
+    if val[0] != 1u32 {
+        return false;
+    }
+
+    for i in 1..val.len() {
+        if val[i] != 0u32 {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Returns the modular inverse of x where the field modulus is p
+pub fn inverse(
+    x_limbs: &Vec<u32>, 
+    p_limbs: &Vec<u32>, 
+    num_limbs: usize,
     log_limb_size: u32
-)
-*/
+) -> Vec<u32> {
+    let mut c = vec![0u32; num_limbs];
+    let mut b = vec![0u32; num_limbs];
+    b[0] = 1u32;
+    let mut u = x_limbs.clone();
+    let mut v = p_limbs.clone();
+
+    while !is_one(&u) && !is_one(&v) {
+        while is_even(&u) {
+            u = bigint::div2(&u, log_limb_size);
+            if is_even(&b) {
+                b = bigint::div2(&b, log_limb_size);
+            } else {
+                // change to add_unsafe?
+                let bp = bigint::add_wide(&b, p_limbs, log_limb_size);
+                assert_eq!(bp[num_limbs], 0u32);
+                let bp = bigint::add_unsafe(&b, p_limbs, log_limb_size);
+                b = bigint::div2(&bp, log_limb_size);
+            }
+        }
+
+        while is_even(&v) {
+            v = bigint::div2(&v, log_limb_size);
+            if is_even(&c) {
+                c = bigint::div2(&c, log_limb_size);
+            } else {
+                // change to add_unsafe?
+                let cp = bigint::add_wide(&c, p_limbs, log_limb_size);
+                assert_eq!(cp[num_limbs], 0u32);
+                let cp = bigint::add_unsafe(&c, p_limbs, log_limb_size);
+                c = bigint::div2(&cp, log_limb_size);
+            }
+        }
+
+        if bigint::gte(&u, &v) {
+            u = sub(&u, &v, &p_limbs, log_limb_size);
+            b = sub(&b, &c, &p_limbs, log_limb_size);
+        } else {
+            v = sub(&v, &u, &p_limbs, log_limb_size);
+            c = sub(&c, &b, &p_limbs, log_limb_size);
+        }
+    }
+
+    let mut result = if is_one(&u) {
+        b
+    } else {
+        c
+    };
+
+    if bigint::gte(&result, &p_limbs) {
+        result = bigint::sub(&result, &p_limbs, log_limb_size);
+    }
+
+    result
+}
 
 #[cfg(test)]
 pub mod tests {
-    use crate::ff::{ add, sub };
+    use crate::ff::{ add, sub, is_even, inverse };
+    use crate::utils::calc_num_limbs;
     use crate::bigint;
-    use num_bigint::BigUint;
+    use num_bigint::{ BigUint, RandomBits };
+    use rand::Rng;
+    use rand_chacha::ChaCha8Rng;
+    use rand_chacha::rand_core::SeedableRng;
 
     fn do_test_add(
         a: &BigUint,
@@ -215,6 +271,47 @@ pub mod tests {
 
                     assert!(bigint::eq(&res_limbs, &expected_limbs));
                 }
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_is_even() {
+        let log_limb_size = 13;
+        let num_limbs = 20;
+
+        for i in 0..16384 {
+            let v = BigUint::from(i as u32);
+            let v_limbs = bigint::from_biguint_le(&v, num_limbs, log_limb_size);
+
+            assert_eq!(is_even(&v_limbs), i % 2 == 0);
+        }
+    }
+
+    #[test]
+    pub fn test_inverse() {
+        let p = BigUint::parse_bytes(b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", 16).unwrap();
+        let mut rng = ChaCha8Rng::seed_from_u64(2 as u64);
+
+        for log_limb_size in 11..16 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+
+            for _ in 0..100 {
+                let x: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+
+                let res = crate::mont::calc_rinv_and_n0(&p, &x, log_limb_size);
+                let x_inv = res.0;
+                let x_inv_limbs = bigint::from_biguint_le(&x_inv, num_limbs, log_limb_size);
+
+                assert_eq!(&x * &x_inv % &p, BigUint::from(1u32));
+
+                let x_limbs = bigint::from_biguint_le(&x, num_limbs, log_limb_size);
+
+                let p_limbs = bigint::from_biguint_le(&p, num_limbs, log_limb_size);
+
+                let inverse_limbs = inverse(&x_limbs, &p_limbs, num_limbs, log_limb_size);
+
+                assert_eq!(inverse_limbs, x_inv_limbs);
             }
         }
     }
