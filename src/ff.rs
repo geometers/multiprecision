@@ -1,4 +1,5 @@
 use crate::bigint;
+use num_bigint::BigUint;
 
 pub fn add(
     lhs: &Vec<u32>,
@@ -103,10 +104,108 @@ pub fn inverse(
     result
 }
 
+pub fn get_higher_with_slack(
+    val: &Vec<u32>,
+    p_bitwidth: usize,
+    num_limbs: usize,
+    log_limb_size: u32,
+) -> Vec<u32> {
+    // Doesn't work with log_limb_size = 15 and num_limbs = 18 because 15 > slack
+    assert!(log_limb_size < 15);
+
+    let slack = (num_limbs * log_limb_size as usize - p_bitwidth) as u32;
+    let mut result = vec![0u32; num_limbs];
+    let w_mask = (1u32 << log_limb_size) - 1u32;
+
+    let s = log_limb_size - slack;
+
+    for i in 0..num_limbs {
+        result[i] = ((val[i + num_limbs] << slack) + 
+                        (val[i + num_limbs - 1] >> s)) & w_mask;
+    }
+
+    result
+}
+
+pub fn gen_mu(
+    p: &BigUint
+) -> BigUint {
+  let mut x = 1u32;
+  let two = BigUint::from(2u32);
+
+  while two.pow(x) < *p {
+    x += 1;
+  }
+
+  BigUint::from(4u32).pow(x) / p
+}
+
+pub fn mul(
+    lhs: &Vec<u32>,
+    rhs: &Vec<u32>,
+    p: &Vec<u32>,
+    mu: &Vec<u32>,
+    p_bitwidth: usize,
+    num_limbs: usize,
+    log_limb_size: u32
+) -> Vec<u32> {
+    let xy = bigint::mul(lhs, rhs, log_limb_size);
+    let xy_hi = get_higher_with_slack(&xy, p_bitwidth, num_limbs, log_limb_size);
+    let l = bigint::mul(&xy_hi, &mu, log_limb_size);
+    let l_hi = get_higher_with_slack(&l, p_bitwidth, num_limbs, log_limb_size);
+    let lp = bigint::mul(&l_hi, &p, log_limb_size);
+    let mut r_wide = bigint::sub(&xy, &lp, log_limb_size);
+
+    let mut p_wide = p.clone();
+    p_wide.resize(num_limbs * 2, 0u32);
+
+    let (r_wide_reduced, underflow) = bigint::sub_with_borrow(&r_wide, &p_wide, log_limb_size);
+    if underflow == 0u32 {
+        r_wide = r_wide_reduced;
+    }
+
+    r_wide.resize(num_limbs, 0u32);
+
+   reduce(&r_wide, &p, log_limb_size)
+
+    /*
+    var xy: BigIntWide = mul(a, b);
+    var xy_hi: BigInt = get_higher_with_slack(&xy);
+    var mu = get_mu();
+    var l: BigIntWide = mul(&xy_hi, &mu);
+    var l_hi: BigInt = get_higher_with_slack(&l);
+    var p = get_p();
+    var lp: BigIntWide = mul(&l_hi, &p);
+    var r_wide: BigIntWide;
+    sub_512(&xy, &lp, &r_wide);
+
+    var r_wide_reduced: BigIntWide;
+    var p_wide = get_p_wide();
+    var underflow = sub_512(&r_wide, &p_wide, &r_wide_reduced);
+    if (underflow == 0u) {
+        r_wide = r_wide_reduced;
+    }
+    var r: BigInt;
+    for (var i = 0u; i < NUM_WORDS; i = i + 1u) {
+        r.limbs[i] = r_wide.limbs[i];
+    }
+    return fr_reduce(&r);
+    */
+}
+
+pub fn reduce(x: &Vec<u32>, y: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    if bigint::gte(x, y) {
+        return bigint::sub(x, y, log_limb_size);
+    }
+
+    x.clone()
+}
+
+
 #[cfg(test)]
 pub mod tests {
-    use crate::ff::{ add, sub, inverse };
-    use crate::utils::calc_num_limbs;
+    use crate::ff::{ add, sub, inverse, mul, gen_mu };
+    use crate::utils::{ calc_bitwidth, calc_num_limbs };
     use crate::bigint;
     use num_bigint::{ BigUint, RandomBits };
     use rand::Rng;
@@ -261,6 +360,7 @@ pub mod tests {
 
         for log_limb_size in 11..16 {
             let num_limbs = calc_num_limbs(log_limb_size, 256);
+            let p_limbs = bigint::from_biguint_le(&p, num_limbs, log_limb_size);
 
             let x: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256)) % &p;
             (0..100).into_par_iter().for_each(|i| {
@@ -274,12 +374,37 @@ pub mod tests {
 
                 let x_limbs = bigint::from_biguint_le(&x, num_limbs, log_limb_size);
 
-                let p_limbs = bigint::from_biguint_le(&p, num_limbs, log_limb_size);
-
                 let inverse_limbs = inverse(&x_limbs, &p_limbs, num_limbs, log_limb_size);
 
                 assert_eq!(inverse_limbs, x_inv_limbs);
             });
+        }
+    }
+
+    #[test]
+    pub fn test_mul() {
+        let p = BigUint::parse_bytes(b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", 16).unwrap();
+        let p_bitwidth = calc_bitwidth(&p);
+        let mu = gen_mu(&p);
+        let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
+
+        for log_limb_size in 11..15 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+
+            let p_limbs = bigint::from_biguint_le(&p, num_limbs, log_limb_size);
+            let mu_limbs = bigint::from_biguint_le(&mu, num_limbs, log_limb_size);
+
+            for _ in 0..1000 {
+                let x: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256)) % &p;
+                let y: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256)) % &p;
+
+                let x_limbs = bigint::from_biguint_le(&x, num_limbs, log_limb_size);
+                let y_limbs = bigint::from_biguint_le(&y, num_limbs, log_limb_size);
+
+                let result_limbs = mul(&x_limbs, &y_limbs, &p_limbs, &mu_limbs, p_bitwidth, num_limbs, log_limb_size);
+                let result = bigint::to_biguint_le(&result_limbs, num_limbs, log_limb_size);
+                assert_eq!(result, &x * &y % &p);
+            }
         }
     }
 }

@@ -189,8 +189,60 @@ pub fn div2(v: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     result
 }
 
+pub fn mul(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    let num_words = lhs.len();
+    assert_eq!(rhs.len(), num_words);
+
+    let w_mask = (1u32 << log_limb_size) - 1u32;
+
+    let mut res = vec![0u32; num_words * 2];
+    for i in 0..num_words {
+        for j in 0..num_words {
+            let c = lhs[i] * rhs[j];
+            res[i + j] += c & w_mask;
+            res[i + j + 1] += c >> log_limb_size;
+        }
+    }
+
+    for i in 0..(num_words * 2 - 1) {
+        res[i + 1] += res[i] >> log_limb_size;
+        res[i] = res[i] & w_mask;
+    }
+
+    res
+}
+
+/*
+fn mul(a: ptr<function, BigInt>, b: ptr<function, BigInt>) -> BigIntWide {
+    var res: BigIntWide;
+    for (var i = 0u; i < NUM_WORDS; i = i + 1u) {
+        for (var j = 0u; j < NUM_WORDS; j = j + 1u) {
+            let c = (*a).limbs[i] * (*b).limbs[j];
+            res.limbs[i+j] += c & W_MASK;
+            res.limbs[i+j+1] += c >> WORD_SIZE;
+        }   
+    }
+
+    /// Start from 0 and carry the extra over to the next index.
+    for (var i = 0u; i < 2 * NUM_WORDS - 1; i = i + 1u) {
+        res.limbs[i+1] += res.limbs[i] >> WORD_SIZE;
+        res.limbs[i] = res.limbs[i] & W_MASK;
+    }
+    return res;
+}
+*/
+
 pub fn is_even(val: &Vec<u32>) -> bool {
     val[0] % 2u32 == 0u32
+}
+
+pub fn is_zero(val: &Vec<u32>) -> bool {
+    for i in 0..val.len() {
+        if val[i] != 0u32 {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn is_one(val: &Vec<u32>) -> bool {
@@ -210,10 +262,9 @@ pub fn is_one(val: &Vec<u32>) -> bool {
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, from_biguint_le, to_biguint_le
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le
     };
     use crate::utils::calc_num_limbs;
-    use num_traits::One;
     use num_bigint::{ BigUint, RandomBits };
     use rand::Rng;
     use rand_chacha::ChaCha8Rng;
@@ -396,19 +447,34 @@ pub mod tests {
     #[test]
     pub fn test_div2() {
         let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
-
         for log_limb_size in 11..16 {
             let num_limbs = calc_num_limbs(log_limb_size, 256);
             for _ in 0..100 {
-                let mut a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
-                if &a % BigUint::from(2u32) == BigUint::one() {
-                    a += BigUint::one();
-                }
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 let a_limbs = from_biguint_le(&a, num_limbs, log_limb_size);
                 let result_limbs = div2(&a_limbs, log_limb_size);
                 let result = to_biguint_le(&result_limbs, num_limbs, log_limb_size);
 
                 assert_eq!(result, a / BigUint::from(2u32));
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_mul() {
+        let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
+        for log_limb_size in 11..16 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+            for _ in 0..100 {
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let b: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let a_limbs = from_biguint_le(&a, num_limbs, log_limb_size);
+                let b_limbs = from_biguint_le(&b, num_limbs, log_limb_size);
+
+                let result_limbs = mul(&a_limbs, &b_limbs, log_limb_size);
+                let result = to_biguint_le(&result_limbs, num_limbs * 2, log_limb_size);
+
+                assert_eq!(result, a * b);
             }
         }
     }
