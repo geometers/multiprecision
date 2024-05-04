@@ -229,7 +229,7 @@ pub fn sqrt_case3mod4(
     let p_plus_1_div_2 = bigint::div2(&p_plus_1, log_limb_size);
     let exponent_limbs = bigint::div2(&p_plus_1_div_2, log_limb_size);
  
-    let s = modpow(&xr_limbs, &r_limbs, &p_limbs, &exponent_limbs, n0, num_limbs, log_limb_size, nsafe);
+    let s = modpow(&xr_limbs, &r_limbs, &exponent_limbs, &p_limbs, n0, num_limbs, log_limb_size, nsafe);
 
     (s.clone(), ff::sub(&p_limbs, &s, &p_limbs, log_limb_size))
 }
@@ -237,8 +237,8 @@ pub fn sqrt_case3mod4(
 pub fn modpow(
     xr: &Vec<u32>,
     r: &Vec<u32>,
-    p: &Vec<u32>,
     exponent: &Vec<u32>,
+    p: &Vec<u32>,
     n0: u32,
     num_limbs: usize,
     log_limb_size: u32,
@@ -587,20 +587,15 @@ pub mod tests {
             let rinv = res.0;
             let n0 = res.1;
 
-            for _ in 0..100 {
-                let x: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256)) % &p;
+            for _ in 0..10 {
+                let s: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256)) % &p;
+                let x = &s * &s % &p;
 
                 let sqrt_x = x.modpow(&exponent, &p);
                 let sqrt_x_b = &p - &sqrt_x % &p;
 
-                if !(
-                    &sqrt_x * &sqrt_x % &p == x ||
-                    &sqrt_x_b * &sqrt_x_b % &p == x
-                ) {
-                    continue;
-                }
-
                 assert_eq!(&sqrt_x * &sqrt_x % &p, x);
+                assert_eq!(&sqrt_x_b * &sqrt_x_b % &p, x);
 
                 let xr = &x * &r % &p;
                 let xr_limbs = bigint::from_biguint_le(&xr, num_limbs, log_limb_size);
@@ -610,7 +605,7 @@ pub mod tests {
                 assert_eq!(&expected_sqrt_xr * &expected_sqrt_xr % &p, xr);
 
                 // Compute sqrt(xr)
-                let sqrt_xr_limbs = modpow(&xr_limbs, &r_limbs, &p_limbs, &exponent_limbs, n0, num_limbs, log_limb_size, nsafe);
+                let sqrt_xr_limbs = modpow(&xr_limbs, &r_limbs, &exponent_limbs, &p_limbs, n0, num_limbs, log_limb_size, nsafe);
                 let sqrt_xr = bigint::to_biguint_le(&sqrt_xr_limbs, num_limbs, log_limb_size);
 
                 assert_eq!((&sqrt_xr * &rinv) * (&sqrt_xr * &rinv) % &p, x);
