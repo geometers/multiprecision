@@ -187,7 +187,7 @@ pub fn add(a: (u32, u32), b: (u32, u32)) -> (u32, u32) {
 
 #[cfg(test)]
 pub mod tests {
-    use rand::Rng;
+    use rand::RngCore;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
     use crate::sha512::sha512_96;
@@ -198,7 +198,8 @@ pub mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(1 as u64);
 
         for _ in 0..10000 {
-            let input: [u8; 96] = [rng.gen(); 96];
+            let mut input = [0u8; 96];
+            rng.fill_bytes(&mut input);
 
             let challenge = sha512_96(input.as_slice().try_into().unwrap());
 
