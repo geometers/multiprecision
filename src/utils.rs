@@ -39,3 +39,11 @@ pub fn bytes_to_u32s_be(input_bytes: &[u8]) -> Vec::<u32> {
     .collect();
     words
 }
+
+pub fn biguint_to_bytes_be(x: &BigUint, num_bytes: usize) -> Vec<u8> {
+    let mut bytes = x.to_bytes_be().to_vec();
+    while bytes.len() < num_bytes {
+        bytes.insert(0, 0u8);
+    }
+    bytes
+}

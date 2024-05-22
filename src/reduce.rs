@@ -1,33 +1,30 @@
+// Converts a slice of 34 bytes to a Vec of 32 16-bit values
+pub fn bytes_34_to_limbs_32(a: &[u8]) -> Vec<u32> {
+    assert_eq!(a.len(), 34);
+    let mut res = vec![0u32; 32];
+
+    for i in 0..17 {
+        res[16 - i] = ((a[i * 2] as u32) << 8) + a[i * 2 + 1] as u32;
+    }
+
+    res
+}
+
 #[cfg(test)]
 pub mod tests {
     use rand::RngCore;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
-    use sha2::Digest;
     use num_bigint::BigUint;
     use rayon::prelude::{IntoParallelIterator, ParallelIterator};
     use crate::bigint;
-    use crate::sha512::sha512_96;
-    use crate::utils::bytes_to_u32s_be;
+    use crate::utils::biguint_to_bytes_be;
+    use crate::reduce::bytes_34_to_limbs_32;
 
     pub fn num_bits(
         x: &BigUint,
     ) -> usize {
         x.to_bytes_be().len() * 8
-    }
-
-    // Converts a slice of 34 bytes to a Vec of 32 16-bit values
-    pub fn bytes_34_to_limbs_32(a: &[u8]) -> Vec<u32> {
-        assert_eq!(a.len(), 34);
-        let mut res = vec![0u32; 32];
-
-        let mut b = a.to_vec();
-
-        for i in 0..17 {
-            res[16 - i] = ((b[i * 2] as u32) << 8) + b[i * 2 + 1] as u32;
-        }
-
-        res
     }
 
     // Converts a slice of 64 bytes to a Vec of 32 16-bit values
@@ -52,21 +49,12 @@ pub mod tests {
 
     pub fn shr_520(a: &Vec<u32>) -> Vec<u32> {
         assert_eq!(a.len(), 64);
-        let mut limbs = a[32..64].to_vec();
+        let limbs = a[32..64].to_vec();
         let mut result = vec![0u32; 32];
-        let mut i = 0;
         for i in 0..17 {
             result[i] = (limbs[i] >> 8) + ((limbs[i + 1] & 0xff) << 8);
         }
         result
-    }
-
-    pub fn biguint_to_bytes_be(x: &BigUint, num_bytes: usize) -> Vec<u8> {
-        let mut bytes = x.to_bytes_be().to_vec();
-        while bytes.len() < num_bytes {
-            bytes.insert(0, 0u8);
-        }
-        bytes
     }
 
     /// Barrett reduction based on https://www.nayuki.io/page/barrett-reduction-algorithm
@@ -74,9 +62,6 @@ pub mod tests {
         x: &BigUint,
         p: &BigUint,
     ) -> BigUint {
-        let log_limb_size = 32;
-        let num_limbs = 8;
-
         // The precomputed r = (b^k) / p
         let r = BigUint::parse_bytes(b"fffffffffffffffffffffffffffffffeb2106215d086329a7ed9ce5a30a2c131b39", 16).unwrap();
 
@@ -87,21 +72,21 @@ pub mod tests {
         // r and x as 32 16-bit limbs.
         // TODO: write a mul() which takes as input a list of 16 16-bit
         // limbs and a list of 32 16-bit limbs.
-        let r_limbs_16 = bytes_34_to_limbs_32(&r_bytes);
-        let r_biguint = bigint::to_biguint_le(&r_limbs_16, 32, 16);
+        let r_limbs = bytes_34_to_limbs_32(&r_bytes);
 
-        let x_limbs_16 = bytes_64_to_limbs_16(&x_bytes);
+        let x_limbs = bytes_64_to_limbs_16(&x_bytes);
+        let p_limbs = bytes_32_to_limbs_32(&p_bytes);
 
         // Compute x * r
-        let xr_limbs_16 = bigint::mul(&r_limbs_16, &x_limbs_16, 16);
+        let xr_limbs = bigint::mul(&r_limbs, &x_limbs, 16);
 
         // Sanity check for x * r
-        let xr_biguint = bigint::to_biguint_le(&xr_limbs_16, 64, 16);
+        let xr_biguint = bigint::to_biguint_le(&xr_limbs, 64, 16);
         let xr = x * &r;
         assert_eq!(xr_biguint, xr);
 
         // Shift xr right by 520 bits
-        let xr_shr_520 = shr_520(&xr_limbs_16);
+        let xr_shr_520 = shr_520(&xr_limbs);
 
         // Sanity check for shr_520(xr)
         let xr_shr = &xr >> 520u32;
@@ -111,7 +96,6 @@ pub mod tests {
         // Compute xr_shr * p
         let xr_shr_p = &xr_shr * p;
 
-        let p_limbs = bytes_32_to_limbs_32(&p_bytes);
         let xr_shr_520_p_limbs = bigint::mul(&xr_shr_520, &p_limbs, 16);
 
         // Sanity check of xr * p
@@ -121,7 +105,7 @@ pub mod tests {
         let rhs_limbs = Vec::<u32>::from(&xr_shr_520_p_limbs[0..32]);
 
         // Compute x - rhs
-        let mut t_limbs = bigint::sub(&x_limbs_16, &rhs_limbs, 16);
+        let mut t_limbs = bigint::sub(&x_limbs, &rhs_limbs, 16);
         let t = x - xr_shr_p;
         assert_eq!(t, bigint::to_biguint_le(&t_limbs, 32, 16));
 
