@@ -73,7 +73,6 @@ pub mod tests {
         // TODO: write a mul() which takes as input a list of 16 16-bit
         // limbs and a list of 32 16-bit limbs.
         let r_limbs = bytes_34_to_limbs_32(&r_bytes);
-
         let x_limbs = bytes_64_to_limbs_16(&x_bytes);
         let p_limbs = bytes_32_to_limbs_32(&p_bytes);
 
@@ -86,17 +85,17 @@ pub mod tests {
         assert_eq!(xr_biguint, xr);
 
         // Shift xr right by 520 bits
-        let xr_shr_520 = shr_520(&xr_limbs);
+        let xr_shr_520_limbs = shr_520(&xr_limbs);
 
         // Sanity check for shr_520(xr)
         let xr_shr = &xr >> 520u32;
 
-        assert_eq!(xr_shr, bigint::to_biguint_le(&xr_shr_520, 32, 16));
+        assert_eq!(xr_shr, bigint::to_biguint_le(&xr_shr_520_limbs, 32, 16));
 
         // Compute xr_shr * p
         let xr_shr_p = &xr_shr * p;
 
-        let xr_shr_520_p_limbs = bigint::mul(&xr_shr_520, &p_limbs, 16);
+        let xr_shr_520_p_limbs = bigint::mul(&xr_shr_520_limbs, &p_limbs, 16);
 
         // Sanity check of xr * p
         assert_eq!(xr_shr_p, bigint::to_biguint_le(&xr_shr_520_p_limbs, 64, 16));
@@ -162,7 +161,7 @@ pub mod tests {
         // Generate a random input
 
         //(0..100000000).into_par_iter().for_each(|i| {
-        (0..1000).into_par_iter().for_each(|i| {
+        (0..100000).into_par_iter().for_each(|i| {
             let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
             let mut input = [0u8; 64];
             rng.fill_bytes(&mut input);
