@@ -2,6 +2,17 @@ use num_bigint::BigUint;
 use num_traits::identities::Zero;
 use std::num::Wrapping;
 
+
+pub fn to_biguint_be(limbs: &Vec<u32>) -> BigUint {
+    let mut biguint = BigUint::zero();
+
+    for &limb in limbs {
+        biguint = (biguint << 32) | BigUint::from(limb);
+    }
+
+    biguint
+}
+
 /// Converts a num_bigint::BigUint into a vector of limbs.
 pub fn from_biguint_le(val: &BigUint, num_limbs: usize, log_limb_size: u32) -> Vec<u32> {
     let mut res = vec![0u32; num_limbs];
@@ -187,6 +198,28 @@ pub fn div2(v: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     }
 
     result
+}
+
+pub fn mul_u32s_be(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
+    let num_words = a.len();
+    assert_eq!(b.len(), num_words);
+    let mut a_split: Vec<u32> = vec![0u32; num_words * 2];
+    let mut b_split: Vec<u32> = vec![0u32; num_words * 2];
+
+    for i in 0..num_words {
+        let a_hi = a[i] >> 16;
+        let a_lo = a[i] & 0xffff;
+        let b_hi = b[i] >> 16;
+        let b_lo = b[i] & 0xffff;
+        a_split[num_words * 2 - 1 - (i * 2)    ] = a_hi;
+        a_split[num_words * 2 - 1 - (i * 2) - 1] = a_lo;
+        b_split[num_words * 2 - 1 - (i * 2)    ] = b_hi;
+        b_split[num_words * 2 - 1 - (i * 2) - 1] = b_lo;
+    }
+
+    let res = mul(&a_split, &b_split, 16);
+
+    res
 }
 
 pub fn mul(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {

@@ -211,7 +211,7 @@ pub mod tests {
     use rand::Rng;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
-    use rayon::prelude::*;
+    use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
     fn do_test_add(
         a: &BigUint,

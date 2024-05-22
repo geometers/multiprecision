@@ -1,4 +1,7 @@
+use crate::utils::bytes_to_u32s_be;
+
 /// A custom SHA512 hash function that accepts a 96-byte input.
+/// Based on https://gist.github.com/illia-v/7883be942da5d416521375004cecb68f
 pub fn sha512_96(
     input_bytes: &[u8; 96],
     ) -> [u8; 64] {
@@ -8,7 +11,7 @@ pub fn sha512_96(
     // Pad the input to get the message array.
     let padding = bytes_to_u32s_be(
         &hex::decode("8000000000000000000000000000000000000000000000000000000000000300").unwrap()
-        );
+    );
 
     message_array.extend(padding);
 
@@ -75,7 +78,6 @@ pub fn sha512_96(
     result.as_slice().try_into().unwrap()
 }
 
-// Based on https://gist.github.com/illia-v/7883be942da5d416521375004cecb68f
 pub fn initial_hash() -> Vec<(u32, u32)> {
     bytes_to_words_be(&hex::decode("6a09e667f3bcc908bb67ae8584caa73b3c6ef372fe94f82ba54ff53a5f1d36f1510e527fade682d19b05688c2b3e6c1f1f83d9abfb41bd6b5be0cd19137e2179").unwrap())
 }
@@ -101,18 +103,6 @@ pub fn words_to_bytes_be(words: &[(u32, u32)]) -> Vec<u8> {
     }
     // Convert the Vec<u8> into a slice
     bytes
-}
-
-pub fn bytes_to_u32s_be(input_bytes: &[u8]) -> Vec::<u32> {
-    let words: Vec::<u32> = input_bytes
-        .chunks_exact(4) // Split the input into chunks of 4 bytes each
-        .map(|chunk| {
-            let array: [u8; 4] = chunk.try_into().unwrap();
-            let w = u32::from_be_bytes(array); // Convert the 4-byte chunk into a u32 (big-endian)
-        w
-        })
-    .collect();
-    words
 }
 
 pub fn bytes_to_words_be(input_bytes: &[u8]) -> Vec::<(u32, u32)> {
