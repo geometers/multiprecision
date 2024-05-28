@@ -47,14 +47,9 @@ pub mod tests {
         res
     }
 
-    pub fn shr_520(a: &Vec<u32>) -> Vec<u32> {
+    pub fn shr_512(a: &Vec<u32>) -> Vec<u32> {
         assert_eq!(a.len(), 64);
-        let limbs = a[32..64].to_vec();
-        let mut result = vec![0u32; 32];
-        for i in 0..17 {
-            result[i] = (limbs[i] >> 8) + ((limbs[i + 1] & 0xff) << 8);
-        }
-        result
+        a[32..64].to_vec()
     }
 
     /// Barrett reduction based on https://www.nayuki.io/page/barrett-reduction-algorithm
@@ -62,8 +57,13 @@ pub mod tests {
         x: &BigUint,
         p: &BigUint,
     ) -> BigUint {
+        let k = 512u32;
+        let b = 2u32;
+        let precomputed_r = BigUint::from(b).pow(k) / p;
+
         // The precomputed r = (b^k) / p
-        let r = BigUint::parse_bytes(b"fffffffffffffffffffffffffffffffeb2106215d086329a7ed9ce5a30a2c131b39", 16).unwrap();
+        let r = BigUint::parse_bytes(b"fffffffffffffffffffffffffffffffeb2106215d086329a7ed9ce5a30a2c131b", 16).unwrap();
+        assert_eq!(r, precomputed_r);
 
         let r_bytes = biguint_to_bytes_be(&r, 34);
         let x_bytes = biguint_to_bytes_be(&x, 64);
@@ -84,24 +84,24 @@ pub mod tests {
         let xr = x * &r;
         assert_eq!(xr_biguint, xr);
 
-        // Shift xr right by 520 bits
-        let xr_shr_520_limbs = shr_520(&xr_limbs);
+        // Shift xr right by 512 bits
+        let xr_shr_512_limbs = shr_512(&xr_limbs);
 
-        // Sanity check for shr_520(xr)
-        let xr_shr = &xr >> 520u32;
+        // Sanity check for shr_512(xr)
+        let xr_shr = &xr >> 512u32;
 
-        assert_eq!(xr_shr, bigint::to_biguint_le(&xr_shr_520_limbs, 32, 16));
+        assert_eq!(xr_shr, bigint::to_biguint_le(&xr_shr_512_limbs, 32, 16));
 
         // Compute xr_shr * p
         let xr_shr_p = &xr_shr * p;
 
-        let xr_shr_520_p_limbs = bigint::mul(&xr_shr_520_limbs, &p_limbs, 16);
+        let xr_shr_512_p_limbs = bigint::mul(&xr_shr_512_limbs, &p_limbs, 16);
 
         // Sanity check of xr * p
-        assert_eq!(xr_shr_p, bigint::to_biguint_le(&xr_shr_520_p_limbs, 64, 16));
+        assert_eq!(xr_shr_p, bigint::to_biguint_le(&xr_shr_512_p_limbs, 64, 16));
 
-        // Take the first 32 limbs of xr_shr_520_p
-        let rhs_limbs = Vec::<u32>::from(&xr_shr_520_p_limbs[0..32]);
+        // Take the first 32 limbs of xr_shr_512_p
+        let rhs_limbs = Vec::<u32>::from(&xr_shr_512_p_limbs[0..32]);
 
         // Compute x - rhs
         let mut t_limbs = bigint::sub(&x_limbs, &rhs_limbs, 16);
@@ -113,8 +113,7 @@ pub mod tests {
             t_limbs = bigint::sub(&t_limbs, &p_limbs, 16);
         }
 
-        let t = bigint::to_biguint_le(&t_limbs, 32, 16);
-        t
+        bigint::to_biguint_le(&t_limbs, 32, 16)
     }
 
     pub fn barrett_nayuki_biguint(
@@ -122,16 +121,16 @@ pub mod tests {
         p: &BigUint,
     ) -> BigUint {
         // TODO: figure out and prove why these numbers work
-        let k = 104u32;
-        let b = 32u32;
+        let k: u32 = 256;
+        let b: u32 = 2;
 
         // Precomputed
-        let m = BigUint::from(b).pow(k);
+        let m = BigUint::from(4u32).pow(k);
         let r = &m / p;
 
         let xr = x * &r;
 
-        let xr_shr = &xr >> 520u32;
+        let xr_shr = &xr >> (2 * k);
 
         let rhs = xr_shr * p;
 
@@ -144,14 +143,65 @@ pub mod tests {
         while result > *p {
             i += 1;
             result = &result - p;
+            //println!("i: {}", i);
         }
 
         if i > 1 {
-            println!("x: {}", x);
+            //println!("x: {}", x);
             println!("i: {}", i);
         }
 
         result
+    }
+
+    /// https://eprint.iacr.org/2022/411.pdf
+    pub fn barrett_greuet_et_al_biguint(
+        x: &BigUint,
+        p: &BigUint,
+    ) -> BigUint {
+        // Select a k such that 2^k > x. Since x is a 512-bit value, its maximum value is 2^512 -
+        // 1, so k can be 512
+        let k = 512;
+        let r = BigUint::from(2u32).pow(k) / p;
+        let xr = x * &r;
+        let xr_shr = xr >> k;
+        let rhs = xr_shr * p;
+
+        let t = x - rhs;
+
+        let mut result = t.clone();
+
+        let mut i = 0;
+        while result > *p {
+            i += 1;
+            result = &result - p;
+            //println!("i: {}", i);
+        }
+
+        if i > 1 {
+            //println!("x: {}", x);
+            println!("i: {}", i);
+        }
+
+        result
+    }
+
+    pub fn do_test(val: &BigUint, p: &BigUint) {
+        // Test with x and x % p
+        let y = val % p;
+
+        for x in &[val.clone(), y.clone()] {
+            let reduced = x % p;
+
+            let result_nayuki_biguint = barrett_nayuki_biguint(&x, &p);
+            assert_eq!(result_nayuki_biguint, reduced);
+
+            let result_nayuki = barrett_nayuki(&x, &p);
+            assert_eq!(result_nayuki, reduced);
+
+            let result_greuet_et_al_biguint = barrett_greuet_et_al_biguint(&x, &p);
+            assert_eq!(result_greuet_et_al_biguint, reduced);
+        }
     }
 
     #[test]
@@ -160,20 +210,13 @@ pub mod tests {
 
         // Generate a random input
 
-        //(0..100000000).into_par_iter().for_each(|i| {
-        (0..100000).into_par_iter().for_each(|i| {
+        (0..1000).into_par_iter().for_each(|i| {
             let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
             let mut input = [0u8; 64];
             rng.fill_bytes(&mut input);
             let x = BigUint::from_bytes_be(&input);
 
-            let reduced = &x % &p;
-
-            let result_nayuki_biguint = barrett_nayuki_biguint(&x, &p);
-            assert_eq!(result_nayuki_biguint, reduced);
-
-            let result_nayuki = barrett_nayuki(&x, &p);
-            assert_eq!(result_nayuki, reduced);
+            do_test(&x, &p);
         });
 
         /*
