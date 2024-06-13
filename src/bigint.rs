@@ -2,6 +2,72 @@ use num_bigint::BigUint;
 use num_traits::identities::Zero;
 use std::num::Wrapping;
 
+pub fn limbs_to_u32s_le(limbs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    // Goal: the shader must convert a little-endian BigInt consisting of limbs into an array of
+    // u32s to be written to an output buffer such that the bytes that the CPU reads match a
+    // big-endian representation of the BigInt.
+
+    // Example: we start with this hexstring:
+    //let hex = "aaffffffffffffffffffffffffffffffffffffffffffffff0807060504030201";
+
+    // The 13-bit limbs in-GPU are:
+    // limbs (le): [513, 24, 321, 3596, 4224, 8191, 8191, 8191, 8191, 8191, 8191, 8191, 8191, 
+    //              8191, 8191, 8191, 8191, 8191, 8191, 341]
+
+    // Bytes that should be read by CPU: [170, 255, ..., 255, 8, 6, 6, 5, 4, 3, 2, 1]
+    //
+    // u32s that should be written by the shader to the output buffer:
+    // [aaffffff, ffffffff, ffffffff, ffffffff, ffffffff, ffffffff, 05060708, 01020304]
+
+    // 1. Convert limbs to bytes
+    // 2. Convert bytes to u32s
+    let mut bytes = Vec::with_capacity(32);
+    for i in 0..32 {
+        bytes.push(byte_from_limbs(limbs, i, log_limb_size));
+    }
+
+    let mut result = Vec::with_capacity(8);
+    for i in 0..8 {
+        let mut r = 0u32;
+        r += bytes[i * 4] as u32;
+        r += (bytes[i * 4 + 1] as u32) << 8;
+        r += (bytes[i * 4 + 2] as u32) << 16;
+        r += (bytes[i * 4 + 3] as u32) << 24;
+        result.push(r);
+    }
+
+    result
+}
+
+pub fn byte_from_limbs(limbs: &Vec<u32>, idx: usize, log_limb_size: u32) -> u8 {
+    let i = 31 - idx;
+    // Ensure log_limb_size is within the expected range
+    assert!(log_limb_size >= 11 && log_limb_size <= 15, "log_limb_size must be between 11 and 15 inclusive");
+
+    // Calculate the bit position of the i-th byte
+    let bit_pos = (i * 8) as u32;
+
+    // Determine which limb and bit within that limb the byte starts at
+    let limb_index = (bit_pos / log_limb_size) as usize;
+    let bit_offset = bit_pos % log_limb_size;
+
+    // Extract the byte across the boundary if necessary
+    let byte: u8;
+
+    // Ensure the bit_offset + 8 does not exceed the boundary of the limb
+    if bit_offset + 8 <= log_limb_size {
+        // Extract the byte from within a single limb
+        byte = ((limbs[limb_index] >> bit_offset) & 0xff) as u8;
+    } else {
+        // Extract the byte from across two limbs
+        let first_part = (limbs[limb_index] >> bit_offset) & ((1 << (log_limb_size - bit_offset)) - 1);
+        let remaining_bits = 8 - (log_limb_size - bit_offset);
+        let second_part = (limbs[limb_index + 1] & ((1 << remaining_bits) - 1)) << (log_limb_size - bit_offset);
+        byte = (first_part | second_part) as u8;
+    }
+
+    byte
+}
 
 pub fn to_biguint_be(limbs: &Vec<u32>) -> BigUint {
     let mut biguint = BigUint::zero();
@@ -172,7 +238,7 @@ pub fn sub_with_borrow(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> (V
             w_borrow = Wrapping(0u32);
         }
     }
- 
+
     (res, w_borrow.0)
 }
 
@@ -223,26 +289,6 @@ pub fn mul(lhs: &Vec<u32>, rhs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     res
 }
 
-/*
-fn mul(a: ptr<function, BigInt>, b: ptr<function, BigInt>) -> BigIntWide {
-    var res: BigIntWide;
-    for (var i = 0u; i < NUM_WORDS; i = i + 1u) {
-        for (var j = 0u; j < NUM_WORDS; j = j + 1u) {
-            let c = (*a).limbs[i] * (*b).limbs[j];
-            res.limbs[i+j] += c & W_MASK;
-            res.limbs[i+j+1] += c >> WORD_SIZE;
-        }   
-    }
-
-    /// Start from 0 and carry the extra over to the next index.
-    for (var i = 0u; i < 2 * NUM_WORDS - 1; i = i + 1u) {
-        res.limbs[i+1] += res.limbs[i] >> WORD_SIZE;
-        res.limbs[i] = res.limbs[i] & W_MASK;
-    }
-    return res;
-}
-*/
-
 pub fn is_even(val: &Vec<u32>) -> bool {
     val[0] % 2u32 == 0u32
 }
@@ -273,7 +319,7 @@ pub fn is_one(val: &Vec<u32>) -> bool {
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le, byte_from_limbs, limbs_to_u32s_le
     };
     use crate::utils::calc_num_limbs;
     use num_bigint::{ BigUint, RandomBits };
@@ -486,6 +532,53 @@ pub mod tests {
                 let result = to_biguint_le(&result_limbs, num_limbs * 2, log_limb_size);
 
                 assert_eq!(result, a * b);
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_byte_from_limbs() {
+        let mut rng = ChaCha8Rng::seed_from_u64(2 as u64);
+
+        for log_limb_size in 11..15 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+            for _ in 0..100000 {
+                let val: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let limbs = from_biguint_le(&val, num_limbs, log_limb_size);
+                let mut bytes = val.to_bytes_be().to_vec();
+
+                while bytes.len() < 32 {
+                    bytes.insert(0, 0);
+                }
+
+                for i in 0..32 {
+                    let b = byte_from_limbs(&limbs, i, log_limb_size);
+                    assert_eq!(b, bytes[i]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_limbs_to_u32s_le() {
+        let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
+
+        for log_limb_size in 11..15 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+            for _ in 0..1000 {
+                let val: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
+                let limbs = from_biguint_le(&val, num_limbs, log_limb_size);
+                let result = limbs_to_u32s_le(&limbs, log_limb_size);
+
+                let mut bytes = val.to_bytes_be().to_vec();
+
+                while bytes.len() < 32 {
+                    bytes.insert(0, 0);
+                }
+
+                let expected_u32s: Vec<u32> = bytemuck::cast_slice(&bytes).to_vec();
+
+                assert_eq!(result, expected_u32s);
             }
         }
     }

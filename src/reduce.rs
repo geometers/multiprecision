@@ -122,7 +122,7 @@ pub mod tests {
     ) -> BigUint {
         // TODO: figure out and prove why these numbers work
         let k: u32 = 256;
-        let b: u32 = 2;
+        //let b: u32 = 2;
 
         // Precomputed
         let m = BigUint::from(4u32).pow(k);
