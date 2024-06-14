@@ -2,8 +2,9 @@ use num_bigint::BigUint;
 use num_traits::identities::Zero;
 use std::num::Wrapping;
 
-pub fn limbs_to_u32s_le(limbs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
-    // Goal: the shader must convert a little-endian BigInt consisting of limbs into an array of
+/// Convert limbs (little-endian) to u32s (big endian
+pub fn limbs_le_to_u32s_be(limbs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    // Convert a little-endian BigInt consisting of limbs into an array of
     // u32s to be written to an output buffer such that the bytes that the CPU reads match a
     // big-endian representation of the BigInt.
 
@@ -19,13 +20,13 @@ pub fn limbs_to_u32s_le(limbs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     // u32s that should be written by the shader to the output buffer:
     // [aaffffff, ffffffff, ffffffff, ffffffff, ffffffff, ffffffff, 05060708, 01020304]
 
-    // 1. Convert limbs to bytes
-    // 2. Convert bytes to u32s
+    // Convert limbs to bytes
     let mut bytes = Vec::with_capacity(32);
     for i in 0..32 {
-        bytes.push(byte_from_limbs(limbs, i, log_limb_size));
+        bytes.push(byte_from_limbs_le(limbs, i, log_limb_size));
     }
 
+    // Convert bytes to u32s
     let mut result = Vec::with_capacity(8);
     for i in 0..8 {
         let mut r = 0u32;
@@ -39,7 +40,7 @@ pub fn limbs_to_u32s_le(limbs: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
     result
 }
 
-pub fn byte_from_limbs(limbs: &Vec<u32>, idx: usize, log_limb_size: u32) -> u8 {
+pub fn byte_from_limbs_le(limbs: &Vec<u32>, idx: usize, log_limb_size: u32) -> u8 {
     let i = 31 - idx;
     // Ensure log_limb_size is within the expected range
     assert!(log_limb_size >= 11 && log_limb_size <= 15, "log_limb_size must be between 11 and 15 inclusive");
@@ -51,22 +52,18 @@ pub fn byte_from_limbs(limbs: &Vec<u32>, idx: usize, log_limb_size: u32) -> u8 {
     let limb_index = (bit_pos / log_limb_size) as usize;
     let bit_offset = bit_pos % log_limb_size;
 
-    // Extract the byte across the boundary if necessary
-    let byte: u8;
-
     // Ensure the bit_offset + 8 does not exceed the boundary of the limb
-    if bit_offset + 8 <= log_limb_size {
+    return if bit_offset + 8 <= log_limb_size {
         // Extract the byte from within a single limb
-        byte = ((limbs[limb_index] >> bit_offset) & 0xff) as u8;
+        ((limbs[limb_index] >> bit_offset) & 0xff) as u8
     } else {
+        let lb = log_limb_size - bit_offset;
         // Extract the byte from across two limbs
-        let first_part = (limbs[limb_index] >> bit_offset) & ((1 << (log_limb_size - bit_offset)) - 1);
+        let first_part = (limbs[limb_index] >> bit_offset) & ((1 << lb) - 1);
         let remaining_bits = 8 - (log_limb_size - bit_offset);
-        let second_part = (limbs[limb_index + 1] & ((1 << remaining_bits) - 1)) << (log_limb_size - bit_offset);
-        byte = (first_part | second_part) as u8;
-    }
-
-    byte
+        let second_part = (limbs[limb_index + 1] & ((1 << remaining_bits) - 1)) << lb;
+        (first_part | second_part) as u8
+    };
 }
 
 pub fn to_biguint_be(limbs: &Vec<u32>) -> BigUint {
@@ -319,7 +316,7 @@ pub fn is_one(val: &Vec<u32>) -> bool {
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le, byte_from_limbs, limbs_to_u32s_le
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le, byte_from_limbs_le, limbs_le_to_u32s_be
     };
     use crate::utils::calc_num_limbs;
     use num_bigint::{ BigUint, RandomBits };
@@ -537,7 +534,7 @@ pub mod tests {
     }
 
     #[test]
-    pub fn test_byte_from_limbs() {
+    pub fn test_byte_from_limbs_le() {
         let mut rng = ChaCha8Rng::seed_from_u64(2 as u64);
 
         for log_limb_size in 11..15 {
@@ -552,7 +549,7 @@ pub mod tests {
                 }
 
                 for i in 0..32 {
-                    let b = byte_from_limbs(&limbs, i, log_limb_size);
+                    let b = byte_from_limbs_le(&limbs, i, log_limb_size);
                     assert_eq!(b, bytes[i]);
                 }
             }
@@ -560,7 +557,7 @@ pub mod tests {
     }
 
     #[test]
-    pub fn test_limbs_to_u32s_le() {
+    pub fn test_limbs_le_to_u32s_be() {
         let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
 
         for log_limb_size in 11..15 {
@@ -568,7 +565,7 @@ pub mod tests {
             for _ in 0..1000 {
                 let val: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(256));
                 let limbs = from_biguint_le(&val, num_limbs, log_limb_size);
-                let result = limbs_to_u32s_le(&limbs, log_limb_size);
+                let result = limbs_le_to_u32s_be(&limbs, log_limb_size);
 
                 let mut bytes = val.to_bytes_be().to_vec();
 
