@@ -313,16 +313,66 @@ pub fn is_one(val: &Vec<u32>) -> bool {
     true
 }
 
+/// Shift the big integer val right by 384 bits.
+/// num_limbs is the number of limbs of a regular big integer.
+/// val should be twice the bitlength of a regular big integer.
+/// val should contain the limbs in little-endian form.
+/// Each limb should have a maximum of log_limb_size bits.
+/// Assume that log_limb_size is between 11 to 15, inclusive.
+pub fn shr_384(val: &Vec<u32>, log_limb_size: u32) -> Vec<u32> {
+    let num_limbs = val.len() / 2;
+
+    let mut result = vec![0u32; num_limbs];
+    
+    let limbs_to_shift = 384 / log_limb_size;
+    let bits_remaining = 384 % log_limb_size;
+    let mask = (1 << bits_remaining) - 1;
+
+    for i in 0..num_limbs {
+        let src_index = i + limbs_to_shift as usize;
+        if src_index < val.len() {
+            let mut shifted = val[src_index] >> bits_remaining;
+            if bits_remaining > 0 && src_index + 1 < val.len() {
+                shifted |= (val[src_index + 1] & mask) << (log_limb_size - bits_remaining);
+            }
+            result[i] = shifted;
+        }
+    }
+    
+    result
+}
+
 #[cfg(test)]
 pub mod tests {
     use crate::bigint::{
-        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le, byte_from_limbs_le, limbs_le_to_u32s_be
+        zero, eq, add_wide, add_unsafe, sub, div2, gt, gte, is_even, mul, from_biguint_le, to_biguint_le, byte_from_limbs_le, limbs_le_to_u32s_be, shr_384
     };
     use crate::utils::calc_num_limbs;
     use num_bigint::{ BigUint, RandomBits };
     use rand::Rng;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
+    use std::ops::Shr;
+
+    #[test]
+    pub fn test_shr_384() {
+        let mut rng = ChaCha8Rng::seed_from_u64(3 as u64);
+        for log_limb_size in 11..16 {
+            let num_limbs = calc_num_limbs(log_limb_size, 256);
+            for _ in 0..1000 {
+                let a: BigUint = rng.sample::<BigUint, RandomBits>(RandomBits::new(512));
+                let a_limbs = from_biguint_le(&a, num_limbs * 2, log_limb_size);
+
+                let expected = a.shr(384);
+                let expected_limbs = from_biguint_le(&expected, num_limbs, log_limb_size);
+
+                let result_limbs = shr_384(&a_limbs, log_limb_size);
+
+                assert_eq!(result_limbs, expected_limbs);
+            }
+        }
+
+    }
 
     #[test]
     pub fn test_is_even() {
